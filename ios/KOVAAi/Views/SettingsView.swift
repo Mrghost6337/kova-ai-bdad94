@@ -13,57 +13,30 @@ struct SettingsView: View {
                 LabeledContent("Goal", value: store.profile.goal.rawValue)
                 LabeledContent("Cadence", value: "\(store.profile.daysPerWeek) days per week")
                 LabeledContent("Equipment", value: store.profile.equipment)
-                Button("Rebuild coaching profile") {
-                    dismiss()
-                    showOnboarding = true
-                }
+                Button("Rebuild coaching profile") { dismiss(); showOnboarding = true }
+            }
+            Section("Cloud sync") {
+                Button("Refresh training data") { Task { await store.refreshRemoteState() } }
+                Button("Export training summary") { Task { await store.exportTrainingSummary() } }
+                if let exportStatus = store.exportStatus { Text(exportStatus).font(KOVATokens.captionFont).foregroundStyle(KOVATokens.secondaryText) }
+                if let backendError = store.backendError { Text(backendError).font(KOVATokens.captionFont).foregroundStyle(KOVATokens.secondaryText) }
             }
             Section("Reminders") {
-                Toggle("Daily workout reminder", isOn: $remindersOn)
-                    .onChange(of: remindersOn) { _, isOn in
-                        guard isOn else {
-                            reminderStatus = "Reminders are off"
-                            return
-                        }
-                        Task {
-                            let scheduled = await NotificationService.scheduleDailyReminder(hour: store.profile.reminderHour, minute: store.profile.reminderMinute)
-                            reminderStatus = scheduled
-                                ? "Daily reminder scheduled for \(reminderTime)"
-                                : "Notifications are unavailable. Enable them in Settings."
-                            if !scheduled { remindersOn = false }
-                        }
-                    }
-                Text(reminderStatus)
-                    .font(KOVATokens.captionFont)
-                    .foregroundStyle(KOVATokens.secondaryText)
+                Toggle("Daily workout reminder", isOn: $remindersOn).onChange(of: remindersOn) { _, isOn in
+                    guard isOn else { reminderStatus = "Reminders are off"; return }
+                    Task { let scheduled = await NotificationService.scheduleDailyReminder(hour: store.profile.reminderHour, minute: store.profile.reminderMinute); reminderStatus = scheduled ? "Daily reminder scheduled for \(reminderTime)" : "Notifications are unavailable. Enable them in Settings."; if !scheduled { remindersOn = false } }
+                }
+                Text(reminderStatus).font(KOVATokens.captionFont).foregroundStyle(KOVATokens.secondaryText)
             }
-            Section("About") {
-                Text("KOVA uses a local, deterministic coaching demo. No AI service or cloud account is connected.")
-                    .font(KOVATokens.bodyFont)
-                    .foregroundStyle(KOVATokens.secondaryText)
-            }
+            Section("Account") { Button("Sign out", role: .destructive) { Task { await store.signOut(); dismiss() } } }
         }
         .scrollContentBackground(.hidden)
         .background(KOVATokens.background)
         .navigationTitle("Settings")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Done") { dismiss() }
-                    .font(KOVATokens.headlineFont)
-            }
-        }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.font(KOVATokens.headlineFont) } }
     }
 
-    private var reminderTime: String {
-        let date = Calendar.current.date(from: DateComponents(hour: store.profile.reminderHour, minute: store.profile.reminderMinute)) ?? .now
-        return date.formatted(date: .omitted, time: .shortened)
-    }
+    private var reminderTime: String { let date = Calendar.current.date(from: DateComponents(hour: store.profile.reminderHour, minute: store.profile.reminderMinute)) ?? .now; return date.formatted(date: .omitted, time: .shortened) }
 }
 
-#Preview {
-    NavigationStack {
-        SettingsView(showOnboarding: .constant(false))
-    }
-    .environment(WorkoutStore())
-    .preferredColorScheme(.dark)
-}
+#Preview { NavigationStack { SettingsView(showOnboarding: .constant(false)) }.environment(WorkoutStore()).preferredColorScheme(.dark) }

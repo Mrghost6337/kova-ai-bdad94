@@ -5,6 +5,9 @@ import Observation
 @Observable
 final class WorkoutStore {
     private let storageKey = "kova.workout.store.v1"
+    private let backendClient = BackendClient()
+    private let dataClient = TenxData()
+    private let storageClient = TenxStorage()
 
     var profile: CoachingProfile
     var recommendedWorkout: WorkoutPlan
@@ -12,6 +15,10 @@ final class WorkoutStore {
     var completedSets: [CompletedSet] = []
     var selectedDateOffset = 0
     var showOnboarding = false
+    var isAuthenticated = false
+    var isSyncing = false
+    var backendError: String?
+    var exportStatus: String?
 
     init() {
         if let saved = Self.loadSavedState(forKey: storageKey) {
@@ -20,8 +27,8 @@ final class WorkoutStore {
             workoutHistory = saved.workoutHistory
         } else {
             profile = .seeded
-            recommendedWorkout = WorkoutStore.makeWorkout(focus: .push, minutes: 58, intensity: "Progression day", rationale: "Your last pull session was controlled. Push volume is ready to progress.")
-            workoutHistory = WorkoutStore.seedHistory()
+            recommendedWorkout = Self.makeWorkout(focus: .push, minutes: 58, intensity: "Progression day", rationale: "Your first progression session is ready.")
+            workoutHistory = []
             persist()
         }
     }
@@ -36,7 +43,7 @@ final class WorkoutStore {
             guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
             day = previous
         }
-        return max(count, 1)
+        return count
     }
 
     var weeklySessions: Int {
@@ -50,6 +57,49 @@ final class WorkoutStore {
     }
 
     var lastLog: WorkoutLog? { workoutHistory.sorted { $0.date > $1.date }.first }
+
+    func restoreSession() async {
+        isAuthenticated = await TenxSession.shared.isSignedIn
+        guard isAuthenticated else { return }
+        await refreshRemoteState()
+    }
+
+    func signIn(email: String, password: String, createAccount: Bool) async throws {
+        if createAccount {
+            _ = try await TenxSession.shared.signUp(email: email, password: password)
+        } else {
+            _ = try await TenxSession.shared.signIn(email: email, password: password)
+        }
+        isAuthenticated = true
+        await refreshRemoteState()
+    }
+
+    func signOut() async {
+        await TenxSession.shared.signOut()
+        isAuthenticated = false
+        backendError = nil
+    }
+
+    func refreshRemoteState() async {
+        guard isAuthenticated else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            let token = try await TenxSession.shared.validAccessToken()
+            async let plan: RemotePlan = backendClient.get(RemotePlan.self, path: "/api/v1/active-plan", accessToken: token)
+            async let history: RemoteHistory = backendClient.get(RemoteHistory.self, path: "/api/v1/workout-history", accessToken: token)
+            let profileData = try await dataClient.select(table: "coaching_profiles", accessToken: token)
+            recommendedWorkout = try await plan.asWorkoutPlan()
+            workoutHistory = try await history.items.map { try $0.asWorkoutLog() }
+            if let remoteProfile = try JSONDecoder.tenxDecoder.decode([RemoteProfile].self, from: profileData).first {
+                profile = remoteProfile.asProfile(using: profile)
+            }
+            persist()
+            backendError = nil
+        } catch {
+            backendError = error.localizedDescription
+        }
+    }
 
     func setsCompleted(for exercise: Exercise) -> Int {
         completedSets.filter { $0.exerciseID == exercise.id }.count
@@ -66,64 +116,73 @@ final class WorkoutStore {
         completedSets.removeAll()
     }
 
-    func finishWorkout(rpe: Int, soreness: Int, elapsedMinutes: Int) {
+    func finishWorkout(rpe: Int, soreness: Int, elapsedMinutes: Int) async {
         let completion = Double(completedSets.count) / Double(max(recommendedWorkout.totalSets, 1))
-        let volume = recommendedWorkout.exercises.reduce(0) { partial, exercise in
-            partial + (exercise.sets * 850)
-        }
+        let volume = recommendedWorkout.exercises.reduce(0) { $0 + ($1.sets * 850) }
         let log = WorkoutLog(planTitle: recommendedWorkout.title, focus: recommendedWorkout.focus, date: .now, durationMinutes: max(elapsedMinutes, 1), volume: volume, rpe: rpe, soreness: soreness, completion: completion)
-        workoutHistory.append(log)
-        completedSets.removeAll()
-        adaptRecommendation(after: log)
-        persist()
-    }
-
-    func swapRecommendation() {
-        let nextFocus: WorkoutFocus
-        switch recommendedWorkout.focus {
-        case .push: nextFocus = .pull
-        case .pull: nextFocus = .legs
-        case .legs: nextFocus = .upper
-        case .upper: nextFocus = .push
+        guard isAuthenticated else {
+            backendError = "Sign in to save a completed workout."
+            return
         }
-        recommendedWorkout = Self.makeWorkout(focus: nextFocus, minutes: recommendedWorkout.estimatedMinutes, intensity: "Fresh stimulus", rationale: "Swapped locally to keep your week balanced across movement patterns.")
-        persist()
-        HapticService.selection()
-    }
-
-    func regenerateRecommendation() {
-        let minutes = recommendedWorkout.estimatedMinutes == 58 ? 45 : 58
-        recommendedWorkout = Self.makeWorkout(focus: recommendedWorkout.focus, minutes: minutes, intensity: "Adaptive volume", rationale: "Rebuilt from your latest effort, recovery signal, and available training time.")
-        persist()
-        HapticService.selection()
+        do {
+            let token = try await TenxSession.shared.validAccessToken()
+            let payload = CompletionPayload(planID: recommendedWorkout.id, durationMinutes: log.durationMinutes, volumeKg: log.volume, rpe: rpe, soreness: soreness, completedSets: completedSets.count)
+            let response: CompletionResponse = try await backendClient.send(CompletionResponse.self, path: "/api/v1/workout-completions", body: payload, accessToken: token, encoder: .tenxEncoder)
+            workoutHistory.append(log)
+            recommendedWorkout = try response.nextPlan.asWorkoutPlan()
+            completedSets.removeAll()
+            persist()
+            backendError = nil
+        } catch {
+            backendError = error.localizedDescription
+        }
     }
 
     func updateProfile(goal: TrainingGoal, days: Int, equipment: String, hour: Int, minute: Int) {
         profile = CoachingProfile(goal: goal, daysPerWeek: days, equipment: equipment, reminderHour: hour, reminderMinute: minute)
-        recommendedWorkout = Self.makeWorkout(focus: .push, minutes: 52, intensity: "Personalized start", rationale: "Built from your goal, equipment, and preferred weekly cadence.")
         persist()
+        Task { await syncProfile() }
     }
 
-    private func adaptRecommendation(after log: WorkoutLog) {
-        let nextFocus: WorkoutFocus
-        switch log.focus {
-        case .push: nextFocus = .pull
-        case .pull: nextFocus = .legs
-        case .legs: nextFocus = .upper
-        case .upper: nextFocus = .push
+    func exportTrainingSummary() async {
+        guard isAuthenticated else {
+            exportStatus = "Sign in to export your training summary."
+            return
         }
-        let needsRecovery = log.rpe >= 9 || log.soreness >= 4
-        let minutes = needsRecovery ? 42 : 58
-        let intensity = needsRecovery ? "Recovery-adjusted" : "Progression ready"
-        let rationale = needsRecovery
-            ? "Your last session landed hard. Volume is reduced today while your next muscle group stays productive."
-            : "Your last session was well-managed. Load and working sets can progress for the next muscle group."
-        recommendedWorkout = Self.makeWorkout(focus: nextFocus, minutes: minutes, intensity: intensity, rationale: rationale)
+        guard TenxProject.storageBuckets.contains("workout-exports") else {
+            exportStatus = "Workout exports are not configured yet."
+            return
+        }
+        do {
+            let token = try await TenxSession.shared.validAccessToken()
+            let data = try JSONEncoder.tenxEncoder.encode(ExportSummary(profile: profile, workouts: workoutHistory))
+            let filename = "kova-training-summary-\(Date.now.formatted(date: .numeric, time: .omitted)).json".replacingOccurrences(of: "/", with: "-")
+            let object = try await storageClient.upload(data: data, bucket: "workout-exports", filename: filename, contentType: "application/json", accessToken: token)
+            let objects = try await storageClient.listObjects(bucket: "workout-exports", accessToken: token)
+            exportStatus = objects.contains(where: { $0.id == object.id }) ? "Training summary exported." : "Export needs confirmation."
+        } catch {
+            exportStatus = error.localizedDescription
+        }
+    }
+
+    private func syncProfile() async {
+        guard isAuthenticated else { return }
+        do {
+            let token = try await TenxSession.shared.validAccessToken()
+            let payload = RemoteProfileUpdate(goal: profile.goal.rawValue.lowercased(), daysPerWeek: profile.daysPerWeek, equipment: profile.equipment)
+            let _: RemoteProfile = try await backendClient.send(RemoteProfile.self, path: "/api/v1/profile", method: "PUT", body: payload, accessToken: token, encoder: .tenxEncoder)
+            let profileData = try await dataClient.select(table: "coaching_profiles", accessToken: token)
+            if let confirmed = try JSONDecoder.tenxDecoder.decode([RemoteProfile].self, from: profileData).first {
+                profile = confirmed.asProfile(using: profile)
+                persist()
+            }
+        } catch {
+            backendError = error.localizedDescription
+        }
     }
 
     private func persist() {
-        let state = SavedWorkoutState(profile: profile, recommendedWorkout: recommendedWorkout, workoutHistory: workoutHistory)
-        guard let data = try? JSONEncoder().encode(state) else { return }
+        guard let data = try? JSONEncoder().encode(SavedWorkoutState(profile: profile, recommendedWorkout: recommendedWorkout, workoutHistory: workoutHistory)) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 
@@ -146,20 +205,20 @@ final class WorkoutStore {
         }
         return WorkoutPlan(title: "\(focus.rawValue) performance", focus: focus, estimatedMinutes: minutes, intensityNote: intensity, exercises: exercises, rationale: rationale)
     }
-
-    private static func seedHistory() -> [WorkoutLog] {
-        let calendar = Calendar.current
-        let days = [0, 1, 2, 4, 6, 9, 12]
-        let focuses: [WorkoutFocus] = [.pull, .legs, .push, .upper, .legs, .pull, .push]
-        return zip(days, focuses).enumerated().compactMap { index, pair in
-            guard let date = calendar.date(byAdding: .day, value: -pair.0, to: .now) else { return nil }
-            return WorkoutLog(planTitle: "\(pair.1.rawValue) performance", focus: pair.1, date: date, durationMinutes: 46 + index, volume: 8_400 + (index * 550), rpe: 7 + (index % 2), soreness: 2 + (index % 3), completion: 1)
-        }
-    }
 }
 
-private struct SavedWorkoutState: Codable {
-    var profile: CoachingProfile
-    var recommendedWorkout: WorkoutPlan
-    var workoutHistory: [WorkoutLog]
+private struct SavedWorkoutState: Codable { var profile: CoachingProfile; var recommendedWorkout: WorkoutPlan; var workoutHistory: [WorkoutLog] }
+private struct RemoteExercise: Codable { let name: String; let sets: Int; let reps: String; let load: String; let restSeconds: Int }
+private struct RemotePlan: Codable {
+    let id: UUID; let title: String; let focus: String; let estimatedMinutes: Int; let intensityNote: String; let exercises: [RemoteExercise]; let rationale: String
+    func asWorkoutPlan() throws -> WorkoutPlan { guard let workoutFocus = WorkoutFocus(rawValue: focus.capitalized) else { throw TenxBackendError.invalidResponse }; return WorkoutPlan(id: id, title: title, focus: workoutFocus, estimatedMinutes: estimatedMinutes, intensityNote: intensityNote, exercises: exercises.map { Exercise(name: $0.name, sets: $0.sets, reps: $0.reps, load: $0.load, restSeconds: $0.restSeconds) }, rationale: rationale) }
 }
+private struct RemoteHistory: Codable { let items: [RemoteLog] }
+private struct RemoteLog: Codable { let id: UUID; let planTitle: String; let focus: String; let completedAt: Date; let durationMinutes: Int; let volumeKg: Int; let rpe: Int; let soreness: Int; let completedSets: Int; let prescribedSets: Int; func asWorkoutLog() throws -> WorkoutLog { guard let workoutFocus = WorkoutFocus(rawValue: focus.capitalized) else { throw TenxBackendError.invalidResponse }; return WorkoutLog(id: id, planTitle: planTitle, focus: workoutFocus, date: completedAt, durationMinutes: durationMinutes, volume: volumeKg, rpe: rpe, soreness: soreness, completion: Double(completedSets) / Double(max(prescribedSets, 1))) } }
+private struct RemoteProfile: Codable { let goal: String; let daysPerWeek: Int; let equipment: String; func asProfile(using current: CoachingProfile) -> CoachingProfile { CoachingProfile(goal: goal == "strength" ? .strength : .hypertrophy, daysPerWeek: daysPerWeek, equipment: equipment, reminderHour: current.reminderHour, reminderMinute: current.reminderMinute) } }
+private struct RemoteProfileUpdate: Codable { let goal: String; let daysPerWeek: Int; let equipment: String }
+private struct CompletionPayload: Codable { let planID: UUID; let durationMinutes: Int; let volumeKg: Int; let rpe: Int; let soreness: Int; let completedSets: Int }
+private struct CompletionResponse: Codable { let nextPlan: RemotePlan }
+private struct ExportSummary: Codable { let profile: CoachingProfile; let workouts: [WorkoutLog] }
+private extension JSONDecoder { static var tenxDecoder: JSONDecoder { let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; decoder.dateDecodingStrategy = .iso8601; return decoder } }
+private extension JSONEncoder { static var tenxEncoder: JSONEncoder { let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase; encoder.dateEncodingStrategy = .iso8601; return encoder } }

@@ -22,9 +22,15 @@ struct CoachRootView: View {
             }
             .tabItem { Label("Plan", systemImage: "calendar") }
         }
+        .task { await store.restoreSession() }
         .tint(KOVATokens.accent)
         .environment(store)
         .preferredColorScheme(.dark)
+        .overlay {
+            if !store.isAuthenticated {
+                AuthenticationView()
+            }
+        }
         .sheet(isPresented: $showingSettings) {
             NavigationStack {
                 SettingsView(showOnboarding: $showingOnboarding)

@@ -209,9 +209,12 @@ struct FeedbackView: View {
             feedbackPicker(title: "Current soreness", value: $soreness, range: 1...5, suffix: "/5")
             Spacer(minLength: KOVATokens.md)
             Button("Save feedback") {
-                store.finishWorkout(rpe: rpe, soreness: soreness, elapsedMinutes: elapsedMinutes)
-                HapticService.setCompleted()
-                onComplete()
+                Task {
+                    await store.finishWorkout(rpe: rpe, soreness: soreness, elapsedMinutes: elapsedMinutes)
+                    guard store.backendError == nil else { return }
+                    HapticService.setCompleted()
+                    onComplete()
+                }
             }
             .buttonStyle(KOVAPrimaryButtonStyle())
         }

@@ -6,7 +6,99 @@ project:
       path: ios
 
 appServices:
-  enabled: false
+  enabled: true
+  mode: managed
+  provider: neon
+  auth:
+    enabled: true
+    provider: tenx-managed-better-auth
+    methods:
+      apple: false
+      emailPassword: true
+      google: false
+    session:
+      iosTokenBridge: true
+  database:
+    provider: neon
+    migrations: services/db/migrations
+    policies: services/db/policies
+    seeds: services/db/seeds
+    rlsRequired: true
+    dataApi:
+      enabled: true
+  clients:
+    ios:
+      emitClientConfig: true
+      authFacade: ios/Generated/TenxAuth.swift
+      dataFacade: ios/Generated/TenxData.swift
+      storageFacade: ios/Generated/TenxStorage.swift
+      facade: TenXBackend
+  storage:
+    provider: r2
+    buckets:
+      workout-exports:
+        public: false
 
 backend:
-  enabled: false
+  enabled: true
+  mode: app
+  product: free
+  runtime:
+    kind: python
+    framework: fastapi
+    version: "3.13"
+  clients:
+    ios:
+      output: ios/Generated/BackendClient.swift
+    openapi: backend/openapi.yaml
+  app:
+    image:
+      context: backend
+      dockerfile: backend/Dockerfile
+    service:
+      command: uvicorn app.main:app --host 0.0.0.0 --port 8080
+      port: 8080
+      websocket: false
+      healthCheck:
+        path: /healthz
+        intervalSeconds: 30
+        timeoutSeconds: 5
+    scale:
+      timeoutSeconds: 10
+      maxConcurrency: 5
+      minMachines: 0
+      maxMachines: 1
+      monthlyRequestLimit: 10000
+      clientExposedTableLimit: 5
+      autoscale:
+        enabled: false
+        autoStart: true
+        autoStop: suspend
+        includedRunningHoursPerMonth: 20
+        maxMonthlySpendCents: 0
+    routes:
+      - name: active_plan
+        handler: app.routes.training.router
+        path: /api/v1/active-plan
+        method: GET
+        auth: required
+      - name: update_profile
+        handler: app.routes.training.router
+        path: /api/v1/profile
+        method: PUT
+        auth: required
+      - name: create_workout_completion
+        handler: app.routes.training.router
+        path: /api/v1/workout-completions
+        method: POST
+        auth: required
+      - name: workout_history
+        handler: app.routes.training.router
+        path: /api/v1/workout-history
+        method: GET
+        auth: required
+      - name: progress_summary
+        handler: app.routes.training.router
+        path: /api/v1/progress-summary
+        method: GET
+        auth: required
