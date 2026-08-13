@@ -15,6 +15,7 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: KOVATokens.xxl) {
                 daySwitcher
                 workoutHero
+                readiness
                 guidanceCard
                 trainingWeek
             }
@@ -24,17 +25,20 @@ struct TodayView: View {
         }
         .background(KOVATokens.background)
         .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: KOVATokens.xxs) {
-                    Image(systemName: "flame.fill")
-                    Text("\(store.streak)")
-                        .monospacedDigit()
+            if store.streak > 0 {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: KOVATokens.xxs) {
+                        Image(systemName: "flame.fill")
+                        Text("\(store.streak)")
+                            .monospacedDigit()
+                    }
+                    .font(KOVATokens.headlineFont)
+                    .foregroundStyle(KOVATokens.text)
                 }
-                .font(KOVATokens.headlineFont)
-                .foregroundStyle(KOVATokens.text)
+                .sharedBackgroundVisibility(.hidden)
             }
-            .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
@@ -97,7 +101,7 @@ struct TodayView: View {
     private var workoutHero: some View {
         KOVACard {
             VStack(alignment: .leading, spacing: KOVATokens.xl) {
-                HStack(alignment: .top) {
+                HStack(alignment: .top, spacing: KOVATokens.md) {
                     VStack(alignment: .leading, spacing: KOVATokens.xs) {
                         Text(store.recommendedWorkout.intensityNote.uppercased())
                             .font(KOVATokens.eyebrowFont)
@@ -110,11 +114,12 @@ struct TodayView: View {
                             .minimumScaleFactor(0.76)
                     }
                     Spacer(minLength: KOVATokens.md)
-                    Image(systemName: store.recommendedWorkout.focus.symbol)
-                        .font(KOVATokens.titleFont)
-                        .foregroundStyle(KOVATokens.text)
-                        .frame(width: KOVATokens.huge, height: KOVATokens.huge)
-                        .background(KOVATokens.surfaceRaised, in: RoundedRectangle(cornerRadius: KOVATokens.controlRadius, style: .continuous))
+                    MiniProgressRing(
+                        progress: Double(store.weeklySessions) / Double(max(store.profile.daysPerWeek, 1)),
+                        value: "\(store.weeklySessions)",
+                        label: "sessions"
+                    )
+                    .frame(width: KOVATokens.huge, height: KOVATokens.huge)
                 }
                 HStack(spacing: KOVATokens.xl) {
                     MetricLabel(label: "Time", value: "\(store.recommendedWorkout.estimatedMinutes) min")
@@ -138,6 +143,20 @@ struct TodayView: View {
                         .frame(height: KOVATokens.iconTarget)
                 }
             }
+        }
+    }
+
+    private var readiness: some View {
+        HStack(spacing: KOVATokens.md) {
+            MetricLabel(label: "Volume", value: "\(store.weeklyVolume.formatted()) kg")
+            Divider().overlay(KOVATokens.border)
+            MetricLabel(label: "Latest RPE", value: store.lastLog.map { "\($0.rpe)/10" } ?? "Ready")
+        }
+        .padding(KOVATokens.md)
+        .background(KOVATokens.surfaceRaised, in: RoundedRectangle(cornerRadius: KOVATokens.cardRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: KOVATokens.cardRadius, style: .continuous)
+                .stroke(KOVATokens.border, lineWidth: 1)
         }
     }
 

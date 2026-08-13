@@ -9,6 +9,10 @@ struct PlanView: View {
         ("Consolidation", "Week 7", "Hold quality work and assess recovery")
     ]
 
+    private var activePhaseIndex: Int {
+        store.weeklySessions >= store.profile.daysPerWeek ? 1 : 0
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: KOVATokens.xxl) {
@@ -22,23 +26,26 @@ struct PlanView: View {
         }
         .background(KOVATokens.background)
         .navigationTitle("Plan")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: KOVATokens.xxs) {
-                    Image(systemName: "flame.fill")
-                    Text("\(store.streak)")
-                        .monospacedDigit()
+            if store.streak > 0 {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: KOVATokens.xxs) {
+                        Image(systemName: "flame.fill")
+                        Text("\(store.streak)")
+                            .monospacedDigit()
+                    }
+                    .font(KOVATokens.headlineFont)
+                    .foregroundStyle(KOVATokens.text)
                 }
-                .font(KOVATokens.headlineFont)
-                .foregroundStyle(KOVATokens.text)
+                .sharedBackgroundVisibility(.hidden)
             }
-            .sharedBackgroundVisibility(.hidden)
         }
     }
 
     private var planHero: some View {
         KOVACard {
-            VStack(alignment: .leading, spacing: KOVATokens.md) {
+            VStack(alignment: .leading, spacing: KOVATokens.lg) {
                 Text("Program")
                     .font(KOVATokens.eyebrowFont)
                     .kerning(KOVATokens.xxs)
@@ -50,7 +57,8 @@ struct PlanView: View {
                     .minimumScaleFactor(0.76)
                 HStack(spacing: KOVATokens.xl) {
                     MetricLabel(label: "Cadence", value: "\(store.profile.daysPerWeek)d/week")
-                    MetricLabel(label: "Equipment", value: store.profile.equipment)
+                    MetricLabel(label: "Completed", value: "\(store.weeklySessions)")
+                    MetricLabel(label: "Volume", value: "\(store.weeklyVolume.formatted()) kg")
                 }
             }
         }
@@ -64,11 +72,11 @@ struct PlanView: View {
             ForEach(Array(phases.enumerated()), id: \.offset) { index, phase in
                 KOVACard {
                     HStack(alignment: .top, spacing: KOVATokens.md) {
-                        Text("\(index + 1)")
+                        Image(systemName: index < activePhaseIndex ? "checkmark" : "\(index + 1).circle")
                             .font(KOVATokens.headlineFont)
-                            .foregroundStyle(KOVATokens.onAccent)
+                            .foregroundStyle(index == activePhaseIndex ? KOVATokens.onAccent : KOVATokens.text)
                             .frame(width: KOVATokens.iconTarget, height: KOVATokens.iconTarget)
-                            .background(KOVATokens.accent, in: Circle())
+                            .background(index == activePhaseIndex ? KOVATokens.accent : KOVATokens.surfaceRaised, in: Circle())
                         VStack(alignment: .leading, spacing: KOVATokens.xxs) {
                             Text(phase.0)
                                 .font(KOVATokens.headlineFont)
@@ -92,13 +100,25 @@ struct PlanView: View {
                 .font(KOVATokens.titleFont)
                 .foregroundStyle(KOVATokens.text)
             KOVACard {
-                VStack(alignment: .leading, spacing: KOVATokens.xs) {
-                    Text(store.recommendedWorkout.title)
-                        .font(KOVATokens.headlineFont)
-                        .foregroundStyle(KOVATokens.text)
-                    Text("\(store.recommendedWorkout.totalSets) sets · \(store.recommendedWorkout.estimatedMinutes) minutes")
-                        .font(KOVATokens.bodyFont)
-                        .foregroundStyle(KOVATokens.secondaryText)
+                VStack(alignment: .leading, spacing: KOVATokens.md) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: KOVATokens.xxs) {
+                            Text(store.recommendedWorkout.title)
+                                .font(KOVATokens.headlineFont)
+                                .foregroundStyle(KOVATokens.text)
+                            Text("\(store.recommendedWorkout.totalSets) sets · \(store.recommendedWorkout.estimatedMinutes) minutes")
+                                .font(KOVATokens.bodyFont)
+                                .foregroundStyle(KOVATokens.secondaryText)
+                        }
+                        Spacer()
+                        Image(systemName: store.recommendedWorkout.focus.symbol)
+                            .foregroundStyle(KOVATokens.text)
+                            .frame(width: KOVATokens.iconTarget, height: KOVATokens.iconTarget)
+                            .background(KOVATokens.surfaceRaised, in: RoundedRectangle(cornerRadius: KOVATokens.controlRadius, style: .continuous))
+                    }
+                    ForEach(store.recommendedWorkout.exercises.prefix(3)) { exercise in
+                        WorkoutPreviewRow(exercise: exercise, completedSets: 0)
+                    }
                 }
             }
         }

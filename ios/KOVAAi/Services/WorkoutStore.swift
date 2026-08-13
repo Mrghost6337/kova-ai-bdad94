@@ -19,16 +19,18 @@ final class WorkoutStore {
     var isSyncing = false
     var backendError: String?
     var exportStatus: String?
+    var healthConnection: HealthConnectionState = .notConnected
 
     init() {
         if let saved = Self.loadSavedState(forKey: storageKey) {
             profile = saved.profile
             recommendedWorkout = saved.recommendedWorkout
-            workoutHistory = saved.workoutHistory
+            workoutHistory = saved.workoutHistory.isEmpty ? Self.seededHistory : saved.workoutHistory
+            persist()
         } else {
             profile = .seeded
             recommendedWorkout = Self.makeWorkout(focus: .push, minutes: 58, intensity: "Progression day", rationale: "Your first progression session is ready.")
-            workoutHistory = []
+            workoutHistory = Self.seededHistory
             persist()
         }
     }
@@ -78,6 +80,22 @@ final class WorkoutStore {
         await TenxSession.shared.signOut()
         isAuthenticated = false
         backendError = nil
+    }
+
+    func connectAppleHealth() async {
+        healthConnection = .requesting
+        healthConnection = await HealthKitService.requestWorkoutReadAccess()
+    }
+
+    func deleteAccount(password: String?) async {
+        do {
+            try await TenxSession.shared.deleteAccount(password: password)
+            isAuthenticated = false
+            backendError = nil
+            exportStatus = "Account deleted."
+        } catch {
+            backendError = error.localizedDescription
+        }
     }
 
     func refreshRemoteState() async {
@@ -215,6 +233,22 @@ final class WorkoutStore {
     private static func loadSavedState(forKey key: String) -> SavedWorkoutState? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(SavedWorkoutState.self, from: data)
+    }
+
+    private static var seededHistory: [WorkoutLog] {
+        let calendar = Calendar.current
+        let sessions: [(Int, WorkoutFocus, String, Int, Int, Int, Int)] = [
+            (0, .pull, "Pull performance", 62, 15_480, 8, 3),
+            (1, .legs, "Legs performance", 68, 18_920, 8, 4),
+            (2, .push, "Push performance", 59, 14_760, 7, 2),
+            (4, .upper, "Upper performance", 54, 12_980, 7, 3),
+            (5, .legs, "Legs performance", 65, 18_210, 8, 4),
+            (6, .pull, "Pull performance", 57, 13_860, 7, 2)
+        ]
+        return sessions.compactMap { offset, focus, title, minutes, volume, rpe, soreness in
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: .now) else { return nil }
+            return WorkoutLog(planTitle: title, focus: focus, date: date, durationMinutes: minutes, volume: volume, rpe: rpe, soreness: soreness, completion: 1)
+        }
     }
 
     private static func makeWorkout(focus: WorkoutFocus, minutes: Int, intensity: String, rationale: String) -> WorkoutPlan {
