@@ -35,7 +35,7 @@ struct CoachRootView: View {
                 .environment(store)
                 .preferredColorScheme(.dark)
             } else if !store.isAuthenticated {
-                AuthenticationView()
+                AuthenticationView(onAuthenticated: nil)
             }
         }
         .sheet(isPresented: $showingSettings) {
