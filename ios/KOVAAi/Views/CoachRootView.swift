@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CoachRootView: View {
+    @AppStorage("kova.hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var store = WorkoutStore()
     @State private var showingSettings = false
     @State private var showingOnboarding = false
@@ -27,7 +28,13 @@ struct CoachRootView: View {
         .environment(store)
         .preferredColorScheme(.dark)
         .overlay {
-            if !store.isAuthenticated {
+            if !hasCompletedOnboarding {
+                OnboardingView {
+                    hasCompletedOnboarding = true
+                }
+                .environment(store)
+                .preferredColorScheme(.dark)
+            } else if !store.isAuthenticated {
                 AuthenticationView()
             }
         }
@@ -38,6 +45,7 @@ struct CoachRootView: View {
         }
         .fullScreenCover(isPresented: $showingOnboarding) {
             OnboardingView {
+                hasCompletedOnboarding = true
                 showingOnboarding = false
             }
             .environment(store)

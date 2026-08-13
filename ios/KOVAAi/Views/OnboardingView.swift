@@ -4,6 +4,7 @@ struct OnboardingView: View {
     @Environment(WorkoutStore.self) private var store
     let onComplete: () -> Void
     @State private var step = 0
+    @State private var showingAccountSetup = false
     @State private var goal: TrainingGoal = .hypertrophy
     @State private var daysPerWeek = 4
     @State private var equipment = "Full gym"
@@ -15,13 +16,21 @@ struct OnboardingView: View {
             Spacer(minLength: KOVATokens.lg)
             stepContent
             Spacer(minLength: KOVATokens.lg)
-            Button(step == 3 ? "Build my workout" : "Continue") {
+            Button(step == 3 ? "Continue to account" : "Continue") {
                 advance()
             }
             .buttonStyle(KOVAPrimaryButtonStyle())
         }
         .padding(KOVATokens.screenMargin)
         .background(KOVATokens.background)
+        .fullScreenCover(isPresented: $showingAccountSetup) {
+            AuthenticationView {
+                HapticService.setCompleted()
+                onComplete()
+            }
+            .environment(store)
+            .preferredColorScheme(.dark)
+        }
     }
 
     private var progress: some View {
@@ -39,7 +48,7 @@ struct OnboardingView: View {
     private var stepContent: some View {
         switch step {
         case 0:
-            choiceScreen(title: "Build a plan that adapts.", subtitle: "KOVA uses effort and soreness feedback to tune your next workout.") {
+            choiceScreen(title: "Build a plan that adapts", subtitle: "KOVA uses effort and soreness feedback to tune your next workout.") {
                 choiceRow("Hypertrophy", selected: goal == .hypertrophy) { goal = .hypertrophy }
                 choiceRow("Strength", selected: goal == .strength) { goal = .strength }
             }
@@ -56,7 +65,7 @@ struct OnboardingView: View {
                 choiceRow("Minimal equipment", selected: equipment == "Minimal equipment") { equipment = "Minimal equipment" }
             }
         default:
-            choiceScreen(title: "Set your reminder", subtitle: "A single daily nudge will be scheduled after you choose a time.") {
+            choiceScreen(title: "Your plan is ready", subtitle: "Set your reminder now. Your account will keep this plan and every completed session in sync.") {
                 Picker("Reminder time", selection: $reminderHour) {
                     ForEach(6...21, id: \.self) { hour in
                         Text(hourLabel(hour)).tag(hour)
@@ -109,8 +118,7 @@ struct OnboardingView: View {
         } else {
             store.updateProfile(goal: goal, days: daysPerWeek, equipment: equipment, hour: reminderHour, minute: 0)
             Task { _ = await NotificationService.scheduleDailyReminder(hour: reminderHour, minute: 0) }
-            HapticService.setCompleted()
-            onComplete()
+            showingAccountSetup = true
         }
     }
 
