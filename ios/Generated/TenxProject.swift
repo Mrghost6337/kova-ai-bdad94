@@ -9,8 +9,8 @@ public static let dataAPIURL: URL? = resolvedOptionalURL("TENX_DATA_API_URL", fa
 public static let jwksURL: URL? = URL(string: "https://tenx-managed-better-auth.onrender.com/.well-known/apps/prj-13a2923d21134479/jwks.json")
 public static let audience: String? = "prj-13a2923d21134479"
 public static let appServiceID: String? = "a7381f13-f53e-4293-90c6-79c281ca13c7"
-public static let generatedClientHash: String? = "62cf9d2b0f0c3defd7ec92f924cb3bdc281de72f18b4ec8b75646c2320b5e46c"
-public static let storageBuckets: [String] = []
+public static let generatedClientHash: String? = "32f7f0787ab9c6c9285d7544f03ecec495966996d2baf8a87d0d02bf61175f2e"
+public static let storageBuckets: [String] = ["workout-exports"]
     public static let readyAuthMethods: Set<String> = Set(["emailPassword"])
 
     public enum AuthMethod: String, Sendable {
