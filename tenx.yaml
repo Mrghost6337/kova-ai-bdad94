@@ -1,13 +1,17 @@
 schemaVersion: 1
-
 project:
+  ios:
+    path: ios
   artifacts:
     ios:
       path: ios
-
+    services:
+      path: services
+    backend:
+      path: backend
 appServices:
   enabled: true
-  mode: managed
+  mode: backend-attached
   provider: neon
   auth:
     enabled: true
@@ -36,9 +40,8 @@ appServices:
   storage:
     provider: r2
     buckets:
-      - name: workout-exports
-        public: false
-
+    - name: workout-exports
+      public: false
 backend:
   enabled: true
   mode: app
@@ -46,7 +49,7 @@ backend:
   runtime:
     kind: python
     framework: fastapi
-    version: "3.13"
+    version: '3.13'
   clients:
     ios:
       output: ios/Generated/BackendClient.swift
@@ -77,28 +80,31 @@ backend:
         includedRunningHoursPerMonth: 20
         maxMonthlySpendCents: 0
     routes:
-      - name: active_plan
-        handler: app.routes.training.router
-        path: /api/v1/active-plan
-        method: GET
-        auth: required
-      - name: update_profile
-        handler: app.routes.training.router
-        path: /api/v1/profile
-        method: PUT
-        auth: required
-      - name: create_workout_completion
-        handler: app.routes.training.router
-        path: /api/v1/workout-completions
-        method: POST
-        auth: required
-      - name: workout_history
-        handler: app.routes.training.router
-        path: /api/v1/workout-history
-        method: GET
-        auth: required
-      - name: progress_summary
-        handler: app.routes.training.router
-        path: /api/v1/progress-summary
-        method: GET
-        auth: required
+    - name: active_plan
+      handler: app.routes.training.router
+      path: /api/v1/active-plan
+      method: GET
+      auth: required
+    - name: update_profile
+      handler: app.routes.training.router
+      path: /api/v1/profile
+      method: PUT
+      auth: required
+    - name: create_workout_completion
+      handler: app.routes.training.router
+      path: /api/v1/workout-completions
+      method: POST
+      auth: required
+    - name: workout_history
+      handler: app.routes.training.router
+      path: /api/v1/workout-history
+      method: GET
+      auth: required
+    - name: progress_summary
+      handler: app.routes.training.router
+      path: /api/v1/progress-summary
+      method: GET
+      auth: required
+metadata:
+  displayName: KOVA Ai
+  source: 10x-agent-runtime
