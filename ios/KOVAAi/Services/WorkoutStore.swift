@@ -138,6 +138,32 @@ final class WorkoutStore {
         }
     }
 
+    func swapRecommendation() {
+        let focusOrder = WorkoutFocus.allCases
+        guard let currentIndex = focusOrder.firstIndex(of: recommendedWorkout.focus) else { return }
+        let nextFocus = focusOrder[(currentIndex + 1) % focusOrder.count]
+        recommendedWorkout = Self.makeWorkout(
+            focus: nextFocus,
+            minutes: recommendedWorkout.estimatedMinutes,
+            intensity: recommendedWorkout.intensityNote,
+            rationale: "A fresh \(nextFocus.rawValue.lowercased()) session keeps today aligned with your training block."
+        )
+        persist()
+        HapticService.selection()
+    }
+
+    func regenerateRecommendation() {
+        let adjustedMinutes = max(recommendedWorkout.estimatedMinutes - 8, 40)
+        recommendedWorkout = Self.makeWorkout(
+            focus: recommendedWorkout.focus,
+            minutes: adjustedMinutes,
+            intensity: "Refined volume",
+            rationale: "Volume has been tightened for a focused \(adjustedMinutes)-minute session."
+        )
+        persist()
+        HapticService.selection()
+    }
+
     func updateProfile(goal: TrainingGoal, days: Int, equipment: String, hour: Int, minute: Int) {
         profile = CoachingProfile(goal: goal, daysPerWeek: days, equipment: equipment, reminderHour: hour, reminderMinute: minute)
         persist()
