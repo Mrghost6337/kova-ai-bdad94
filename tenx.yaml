@@ -36,7 +36,7 @@ appServices:
   storage:
     provider: r2
     buckets:
-      workout-exports:
+      - name: workout-exports
         public: false
 
 backend:
