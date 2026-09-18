@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KOVA Ai — live preview (iOS)</title>
+    <meta name="description" content="Interactieve web-preview van de KOVA Ai SwiftUI-app, gerenderd in een iPhone-frame en gekoppeld aan de echte FastAPI-training-backend." />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Ctext x='16' y='22' font-family='-apple-system,Helvetica' font-size='15' font-weight='700' fill='%23fff' text-anchor='middle'%3EK%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div class="stage">
+      <aside class="panel" id="panel">
+        <header class="panel-head">
+          <div class="panel-title">
+            <span class="panel-app-icon">K</span>
+            <span>
+              <strong>KOVA Ai</strong>
+              <small>Live preview · iOS 26 · SwiftUI</small>
+            </span>
+          </div>
+          <p class="panel-note">
+            De Swift-app kan hier niet in een simulator draaien (geen Xcode/macOS). Deze preview
+            rendert dezelfde schermen, tokens en flows in de browser en praat met een lokale
+            API die de echte <code>backend/app</code>-logica gebruikt.
+          </p>
+        </header>
+
+        <section class="panel-section">
+          <h2>Schermen</h2>
+          <div class="screen-nav" id="screen-nav"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Acties</h2>
+          <div class="panel-actions" id="panel-actions"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Live API</h2>
+          <div class="api-meta" id="api-meta">verbinding maken…</div>
+          <div class="api-log" id="api-log"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Device-simulatie</h2>
+          <div class="device-log" id="device-log"></div>
+        </section>
+
+        <footer class="panel-foot">
+          <span id="source-map">—</span>
+        </footer>
+      </aside>
+
+      <main class="device-area">
+        <div class="device-fit" id="device-fit">
+          <div class="device" id="device">
+            <div class="device-side device-side-left"></div>
+            <div class="device-side device-side-right"></div>
+            <div class="screen" id="screen">
+              <div class="status-bar" id="status-bar"></div>
+              <div class="dynamic-island"></div>
+              <div class="phone-ui" id="phone-ui"></div>
+              <div class="home-indicator"></div>
+            </div>
+          </div>
+        </div>
+        <div class="device-caption" id="device-caption">
+          iPhone 16 Pro · 402 × 874 pt · <span id="scale-label">—</span>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
